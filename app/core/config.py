@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
+    BASE_URL: str
+    RESEND_API_KEY: str
+    EMAIL_FROM: str
 
     class Config:
         env_file = ".env"
