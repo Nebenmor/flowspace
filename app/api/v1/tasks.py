@@ -8,6 +8,9 @@ from app.schemas.task import (
     TaskResponse,
     TaskListResponse,
     TaskFilterParams,
+    TaskDependencyCreateRequest,
+    TaskDependencyResponse,
+    SubtaskResponse,
 )
 from app.services.task_service import (
     create_task,
@@ -15,6 +18,11 @@ from app.services.task_service import (
     get_task,
     update_task,
     delete_task,
+    create_subtask,
+    list_subtasks,
+    add_dependency,
+    list_dependencies,
+    remove_dependency,
 )
 
 router = APIRouter(
@@ -94,3 +102,64 @@ async def delete_t(
     current_user=Depends(get_current_user),
 ):
     await delete_task(db, org_slug, workspace_slug, task_id, current_user)
+
+# ── Subtask endpoints ─────────────────────────────────────────────────────────
+
+@router.post("/{task_id}/subtasks", response_model=SubtaskResponse, status_code=201)
+async def create_sub(
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    data: TaskCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await create_subtask(db, org_slug, workspace_slug, task_id, data, current_user)
+
+
+@router.get("/{task_id}/subtasks", response_model=list[SubtaskResponse])
+async def list_sub(
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await list_subtasks(db, org_slug, workspace_slug, task_id, current_user)
+
+
+# ── Dependency endpoints ──────────────────────────────────────────────────────
+
+@router.post("/{task_id}/dependencies", response_model=TaskDependencyResponse, status_code=201)
+async def add_dep(
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    data: TaskDependencyCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await add_dependency(db, org_slug, workspace_slug, task_id, data, current_user)
+
+
+@router.get("/{task_id}/dependencies", response_model=list[TaskDependencyResponse])
+async def list_dep(
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await list_dependencies(db, org_slug, workspace_slug, task_id, current_user)
+
+
+@router.delete("/{task_id}/dependencies/{dependency_id}", status_code=204)
+async def remove_dep(
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    dependency_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    await remove_dependency(db, org_slug, workspace_slug, task_id, dependency_id, current_user)
