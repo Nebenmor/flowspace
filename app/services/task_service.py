@@ -283,3 +283,272 @@ async def _record_activity(
         old_value=old_value,
         new_value=new_value,
     ))
+
+async def create_subtask(
+    db: AsyncSession,
+    org_slug: str,
+    workspace_slug: str,
+    parent_task_id: uuid.UUID,
+    data: TaskCreateRequest,
+    current_user: User,
+) -> Task:
+    org = await _get_org_or_404(db, org_slug)
+    workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
+    await _require_workspace_member(db, workspace.id, current_user.id)
+
+    # Verify parent task exists in this workspace
+    result = await db.execute(
+        select(Task).where(
+            Task.id == parent_task_id,
+            Task.workspace_id == workspace.id,
+            Task.is_archived == False,
+        )
+    )
+    parent_task = result.scalar_one_or_none()
+    if not parent_task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Parent task not found",
+        )
+
+    # Prevent more than one level of nesting —
+    # subtasks cannot have subtasks of their own
+    if parent_task.parent_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot create a subtask of a subtask. Only one level of nesting is allowed.",
+        )
+
+    # Validate assignee
+    if data.assignee_id:
+        await _require_workspace_member(db, workspace.id, data.assignee_id)
+
+    # Calculate position within siblings
+    result = await db.execute(
+        select(func.max(Task.position)).where(
+            Task.workspace_id == workspace.id,
+            Task.parent_id == parent_task_id,
+        )
+    )
+    max_position = result.scalar() or 0.0
+    position = max_position + 1000.0
+
+    subtask = Task(
+        workspace_id=workspace.id,
+        parent_id=parent_task_id,
+        title=data.title,
+        description=data.description,
+        status=data.status,
+        priority=data.priority,
+        assignee_id=data.assignee_id,
+        created_by=current_user.id,
+        due_date=data.due_date,
+        position=position,
+    )
+    db.add(subtask)
+    await db.flush()
+
+    await _record_activity(db, subtask.id, current_user.id, "created", None, {
+        "title": subtask.title,
+        "parent_id": str(parent_task_id),
+    })
+
+    return subtask
+
+
+async def list_subtasks(
+    db: AsyncSession,
+    org_slug: str,
+    workspace_slug: str,
+    parent_task_id: uuid.UUID,
+    current_user: User,
+) -> list[Task]:
+    org = await _get_org_or_404(db, org_slug)
+    workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
+    await _require_workspace_member(db, workspace.id, current_user.id)
+
+    result = await db.execute(
+        select(Task).where(
+            Task.parent_id == parent_task_id,
+            Task.workspace_id == workspace.id,
+            Task.is_archived == False,
+        ).order_by(Task.position)
+    )
+    return list(result.scalars().all())
+
+
+async def add_dependency(
+    db: AsyncSession,
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    data: "TaskDependencyCreateRequest",
+    current_user: User,
+) -> "TaskDependency":
+    from app.db.models.task import TaskDependency
+    from app.schemas.task import TaskDependencyCreateRequest
+
+    org = await _get_org_or_404(db, org_slug)
+    workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
+    await _require_workspace_member(db, workspace.id, current_user.id)
+
+    # Verify task exists
+    result = await db.execute(
+        select(Task).where(
+            Task.id == task_id,
+            Task.workspace_id == workspace.id,
+            Task.is_archived == False,
+        )
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+
+    # Verify dependency target exists in same workspace
+    result = await db.execute(
+        select(Task).where(
+            Task.id == data.depends_on_id,
+            Task.workspace_id == workspace.id,
+            Task.is_archived == False,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target task not found in this workspace",
+        )
+
+    # Prevent self-dependency
+    if task_id == data.depends_on_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A task cannot depend on itself",
+        )
+
+    # Prevent circular dependency
+    if await _would_create_cycle(db, task_id, data.depends_on_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This dependency would create a circular relationship",
+        )
+
+    # Check not already exists
+    result = await db.execute(
+        select(TaskDependency).where(
+            TaskDependency.task_id == task_id,
+            TaskDependency.depends_on_id == data.depends_on_id,
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This dependency already exists",
+        )
+
+    dependency = TaskDependency(
+        task_id=task_id,
+        depends_on_id=data.depends_on_id,
+        dependency_type=data.dependency_type,
+    )
+    db.add(dependency)
+    await db.flush()
+
+    await _record_activity(db, task_id, current_user.id, "dependency_added", None, {
+        "depends_on_id": str(data.depends_on_id),
+        "dependency_type": data.dependency_type,
+    })
+
+    return dependency
+
+
+async def list_dependencies(
+    db: AsyncSession,
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    current_user: User,
+) -> list:
+    from app.db.models.task import TaskDependency
+
+    org = await _get_org_or_404(db, org_slug)
+    workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
+    await _require_workspace_member(db, workspace.id, current_user.id)
+
+    result = await db.execute(
+        select(TaskDependency).where(TaskDependency.task_id == task_id)
+    )
+    return list(result.scalars().all())
+
+
+async def remove_dependency(
+    db: AsyncSession,
+    org_slug: str,
+    workspace_slug: str,
+    task_id: uuid.UUID,
+    dependency_id: uuid.UUID,
+    current_user: User,
+) -> None:
+    from app.db.models.task import TaskDependency
+
+    org = await _get_org_or_404(db, org_slug)
+    workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
+    await _require_workspace_member(db, workspace.id, current_user.id)
+
+    result = await db.execute(
+        select(TaskDependency).where(
+            TaskDependency.id == dependency_id,
+            TaskDependency.task_id == task_id,
+        )
+    )
+    dependency = result.scalar_one_or_none()
+    if not dependency:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dependency not found",
+        )
+
+    await db.delete(dependency)
+
+    await _record_activity(db, task_id, current_user.id, "dependency_removed", {
+        "depends_on_id": str(dependency.depends_on_id),
+        "dependency_type": dependency.dependency_type,
+    }, None)
+
+
+# ── Cycle detection ───────────────────────────────────────────────────────────
+
+async def _would_create_cycle(
+    db: AsyncSession,
+    task_id: uuid.UUID,
+    depends_on_id: uuid.UUID,
+) -> bool:
+    """
+    Check if adding task_id -> depends_on_id would create a cycle.
+    We do a breadth-first traversal starting from depends_on_id,
+    following existing dependencies. If we reach task_id, it's a cycle.
+    """
+    from app.db.models.task import TaskDependency
+
+    visited = set()
+    queue = [depends_on_id]
+
+    while queue:
+        current = queue.pop(0)
+        if current == task_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+
+        result = await db.execute(
+            select(TaskDependency.depends_on_id).where(
+                TaskDependency.task_id == current
+            )
+        )
+        neighbors = result.scalars().all()
+        queue.extend(neighbors)
+
+    return False
