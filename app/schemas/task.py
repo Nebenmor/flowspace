@@ -105,3 +105,29 @@ class TaskFilterParams(BaseModel):
     search: str | None = None
     page: int = 1
     page_size: int = 20
+
+class TaskDependencyCreateRequest(BaseModel):
+    depends_on_id: uuid.UUID
+    dependency_type: str = "blocks"
+
+    @field_validator("dependency_type")
+    @classmethod
+    def type_valid(cls, v: str) -> str:
+        valid = ["blocks", "relates_to", "duplicates"]
+        if v not in valid:
+            raise ValueError(f"Dependency type must be one of: {', '.join(valid)}")
+        return v
+
+
+class TaskDependencyResponse(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    depends_on_id: uuid.UUID
+    dependency_type: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SubtaskResponse(TaskResponse):
+    pass
