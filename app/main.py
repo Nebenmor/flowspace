@@ -9,6 +9,7 @@ from app.api.v1.invitations import router as invitation_router
 from app.api.v1.tasks import router as task_router
 from app.api.v1.labels import router as label_router
 from app.api.v1.custom_fields import router as custom_field_router
+from app.api.v1.activities import router as activity_router
 from app.core.exceptions import register_exception_handlers
 
 app = FastAPI(
@@ -25,6 +26,7 @@ app.include_router(invitation_router, prefix="/api/v1")
 app.include_router(task_router, prefix="/api/v1")
 app.include_router(label_router, prefix="/api/v1")
 app.include_router(custom_field_router, prefix="/api/v1")
+app.include_router(activity_router, prefix="/api/v1")
 
 @app.on_event("startup")
 async def startup():
