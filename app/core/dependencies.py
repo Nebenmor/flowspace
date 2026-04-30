@@ -6,6 +6,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.db.session import AsyncSessionLocal
 from app.core.security import decode_token
 from jose import JWTError
+from fastapi import WebSocket, WebSocketException
+from starlette import status as ws_status
 
 bearer_scheme = HTTPBearer()
 
@@ -48,4 +50,32 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account has been deactivated",
         )
+    return user
+
+async def get_current_user_ws(
+    websocket: WebSocket,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    WebSocket-specific auth dependency.
+    Token is passed as a query parameter since WS can't use headers.
+    """
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise WebSocketException(code=ws_status.WS_1008_POLICY_VIOLATION)
+        user_id: str = payload.get("sub")
+        if not user_id:
+            raise WebSocketException(code=ws_status.WS_1008_POLICY_VIOLATION)
+    except JWTError:
+        raise WebSocketException(code=ws_status.WS_1008_POLICY_VIOLATION)
+
+    from app.db.models.user import User
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise WebSocketException(code=ws_status.WS_1008_POLICY_VIOLATION)
+
     return user
