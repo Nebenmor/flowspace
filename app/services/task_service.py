@@ -9,6 +9,8 @@ from app.db.models.workspace import Workspace
 from app.db.models.user import User
 from app.schemas.task import TaskCreateRequest, TaskUpdateRequest, TaskFilterParams
 from app.services.workspace_service import _get_org_or_404, _get_workspace_or_404, _require_workspace_member
+from app.websockets.manager import manager
+from app.services.notification_service import create_notification
 
 
 async def create_task(
@@ -71,6 +73,19 @@ async def create_task(
         "status": task.status,
         "priority": task.priority,
     })
+
+    # Broadcast real-time event to workspace
+    await manager.broadcast_to_workspace(
+        workspace_id=str(workspace.id),
+        event="task.created",
+        data={
+            "task_id": str(task.id),
+            "title": task.title,
+            "created_by": str(current_user.id),
+            "status": task.status,
+            "priority": task.priority,
+        },
+    )
 
     return task
 
@@ -218,6 +233,20 @@ async def update_task(
             "new": str(data.assignee_id),
         }
         task.assignee_id = data.assignee_id
+
+        # Notify the newly assigned user
+        if data.assignee_id:
+            await create_notification(
+                db=db,
+                user_id=data.assignee_id,
+                type="task.assigned",
+                title="You were assigned a task",
+                body=f"You have been assigned to: {task.title}",
+                meta={
+                    "task_id": str(task.id),
+                    "workspace_id": str(workspace.id),
+                },
+            )
     if data.due_date is not None and data.due_date != task.due_date:
         changes["due_date"] = {
             "old": task.due_date.isoformat() if task.due_date else None,
@@ -231,6 +260,17 @@ async def update_task(
             db, task.id, current_user.id, "updated",
             {k: v["old"] for k, v in changes.items()},
             {k: v["new"] for k, v in changes.items()},
+        )
+
+        # Broadcast real-time event to workspace
+        await manager.broadcast_to_workspace(
+            workspace_id=str(workspace.id),
+            event="task.updated",
+            data={
+                "task_id": str(task.id),
+                "changes": changes,
+                "updated_by": str(current_user.id),
+            },
         )
 
     return task
@@ -264,6 +304,16 @@ async def delete_task(
     task.is_archived = True
     await _record_activity(db, task.id, current_user.id, "archived", None, None)
 
+    # Broadcast real-time event
+    await manager.broadcast_to_workspace(
+        workspace_id=str(workspace.id),
+        event="task.deleted",
+        data={
+            "task_id": str(task_id),
+            "deleted_by": str(current_user.id),
+        },
+    )
+
 
 # ── Audit trail helper ────────────────────────────────────────────────────────
 
@@ -283,6 +333,7 @@ async def _record_activity(
         old_value=old_value,
         new_value=new_value,
     ))
+
 
 async def create_subtask(
     db: AsyncSession,
