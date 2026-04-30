@@ -10,6 +10,7 @@ from app.db.models.user import User
 from app.schemas.invitation import InvitationCreateRequest
 from app.services.organization_service import _require_org_role
 from app.core.config import settings
+from app.services.notification_service import create_notification
 
 INVITE_EXPIRE_DAYS = 7
 
@@ -165,6 +166,23 @@ async def accept_invitation(
         joined_at=datetime.now(timezone.utc),
     )
     db.add(member)
+
+    # Notify the org owner that someone accepted their invitation
+    result = await db.execute(
+        select(Organization).where(Organization.id == invitation.org_id)
+    )
+    org = result.scalar_one()
+    await create_notification(
+        db=db,
+        user_id=org.owner_id,
+        type="invitation.accepted",
+        title="Invitation accepted",
+        body=f"{current_user.full_name or current_user.username} joined your organization",
+        meta={
+            "org_id": str(org.id),
+            "user_id": str(current_user.id),
+        },
+    )
 
     return member
 
