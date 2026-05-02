@@ -11,6 +11,7 @@ from app.schemas.task import TaskCreateRequest, TaskUpdateRequest, TaskFilterPar
 from app.services.workspace_service import _get_org_or_404, _get_workspace_or_404, _require_workspace_member
 from app.websockets.manager import manager
 from app.services.notification_service import create_notification
+from app.services.webhook_service import trigger_webhook_event
 
 
 async def create_task(
@@ -84,6 +85,21 @@ async def create_task(
             "created_by": str(current_user.id),
             "status": task.status,
             "priority": task.priority,
+        },
+    )
+
+    # Trigger webhook event
+    await trigger_webhook_event(
+        db=db,
+        org_id=workspace.org_id,
+        event_type="task.created",
+        payload={
+            "task_id": str(task.id),
+            "title": task.title,
+            "status": task.status,
+            "priority": task.priority,
+            "workspace_id": str(workspace.id),
+            "created_by": str(current_user.id),
         },
     )
 
@@ -273,6 +289,33 @@ async def update_task(
             },
         )
 
+        # Trigger webhook events
+        await trigger_webhook_event(
+            db=db,
+            org_id=workspace.org_id,
+            event_type="task.updated",
+            payload={
+                "task_id": str(task.id),
+                "changes": {k: v["new"] for k, v in changes.items()},
+                "workspace_id": str(workspace.id),
+                "updated_by": str(current_user.id),
+            },
+        )
+
+        # Fire task.completed specifically if status changed to done
+        if "status" in changes and changes["status"]["new"] == "done":
+            await trigger_webhook_event(
+                db=db,
+                org_id=workspace.org_id,
+                event_type="task.completed",
+                payload={
+                    "task_id": str(task.id),
+                    "title": task.title,
+                    "completed_by": str(current_user.id),
+                    "workspace_id": str(workspace.id),
+                },
+            )
+
     return task
 
 
@@ -311,6 +354,18 @@ async def delete_task(
         data={
             "task_id": str(task_id),
             "deleted_by": str(current_user.id),
+        },
+    )
+
+    # Trigger webhook event
+    await trigger_webhook_event(
+        db=db,
+        org_id=workspace.org_id,
+        event_type="task.deleted",
+        payload={
+            "task_id": str(task_id),
+            "deleted_by": str(current_user.id),
+            "workspace_id": str(workspace.id),
         },
     )
 
