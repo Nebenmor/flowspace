@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     BASE_URL: str
     RESEND_API_KEY: str
     EMAIL_FROM: str
+    REDIS_URL: str
 
     class Config:
         env_file = ".env"
