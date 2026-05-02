@@ -14,6 +14,7 @@ from app.schemas.webhook import WebhookCreateRequest, WebhookUpdateRequest
 from app.services.organization_service import _require_org_role
 from sqlalchemy import select, delete
 
+
 # Retry schedule — exponential backoff in minutes
 RETRY_DELAYS = [1, 5, 30, 120, 480]  # 1min, 5min, 30min, 2hr, 8hr
 MAX_ATTEMPTS = len(RETRY_DELAYS) + 1  # 6 total attempts
@@ -163,8 +164,14 @@ async def delete_webhook(
             detail="Webhook not found",
         )
 
-    await db.delete(webhook)
+    # Delete delivery records first to avoid FK violation
+    await db.execute(
+        delete(WebhookDelivery).where(
+            WebhookDelivery.webhook_id == webhook_id
+        )
+    )
 
+    await db.delete(webhook)
 
 async def list_webhook_deliveries(
     db: AsyncSession,
