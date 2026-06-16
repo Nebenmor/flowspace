@@ -4,13 +4,13 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
-import resend
 from app.db.models.organization import Organization, OrganizationMember, Invitation
 from app.db.models.user import User
 from app.schemas.invitation import InvitationCreateRequest
 from app.services.organization_service import _require_org_role
 from app.core.config import settings
 from app.services.notification_service import create_notification
+from app.workers.celery_app import celery_app  # noqa: F401 — ensures app is configured
 
 INVITE_EXPIRE_DAYS = 7
 
@@ -94,8 +94,8 @@ async def send_invitation(
     db.add(invitation)
     await db.flush()
 
-    # Send invitation email
-    await _send_invite_email(
+    # Queue invitation email as background task
+    _send_invite_email(
         to_email=data.email,
         org_name=org.name,
         invited_by_name=current_user.full_name or current_user.username,
@@ -260,36 +260,19 @@ async def revoke_invitation(
 
 # ── Email helper ──────────────────────────────────────────────────────────────
 
-async def _send_invite_email(
+def _send_invite_email(
     to_email: str,
     org_name: str,
     invited_by_name: str,
     token: str,
     role: str,
 ) -> None:
-    invite_url = f"{settings.BASE_URL}/api/v1/invitations/accept?token={token}"
-
-    try:
-        resend.api_key = settings.RESEND_API_KEY
-        resend.Emails.send({
-            "from": settings.EMAIL_FROM,
-            "to": to_email,
-            "subject": f"You've been invited to join {org_name}",
-            "html": f"""
-                <h2>You've been invited to join {org_name}</h2>
-                <p>{invited_by_name} has invited you to join <strong>{org_name}</strong>
-                as a <strong>{role}</strong>.</p>
-                <p>
-                    <a href="{invite_url}"
-                       style="background:#2563eb;color:white;padding:12px 24px;
-                              border-radius:6px;text-decoration:none;">
-                        Accept Invitation
-                    </a>
-                </p>
-                <p>This invitation expires in 7 days.</p>
-                <p>If you did not expect this invitation, you can safely ignore this email.</p>
-            """,
-        })
-    except Exception as e:
-        # Log but don't fail the request — invitation is saved, email can be resent
-        print(f"⚠️ Failed to send invitation email: {e}")
+    """Queue invitation email as a Celery background task."""
+    from app.workers.email_tasks import send_invitation_email
+    send_invitation_email.delay(
+        to_email=to_email,
+        invited_by_name=invited_by_name,
+        org_name=org_name,
+        role=role,
+        token=token,
+    )
