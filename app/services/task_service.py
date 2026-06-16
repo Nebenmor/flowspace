@@ -263,6 +263,19 @@ async def update_task(
                     "workspace_id": str(workspace.id),
                 },
             )
+
+            # Send email notification to newly assigned user
+            result = await db.execute(select(User).where(User.id == data.assignee_id))
+            assignee = result.scalar_one_or_none()
+            if assignee:
+                from app.workers.email_tasks import send_task_assigned_email
+                send_task_assigned_email.delay(
+                    to_email=assignee.email,
+                    assignee_name=assignee.full_name or assignee.username,
+                    task_title=task.title,
+                    task_id=str(task.id),
+                    workspace_name=workspace.slug,
+                )
     if data.due_date is not None and data.due_date != task.due_date:
         changes["due_date"] = {
             "old": task.due_date.isoformat() if task.due_date else None,
