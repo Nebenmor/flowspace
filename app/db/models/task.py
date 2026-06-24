@@ -4,6 +4,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.models.base import TimeStampedBase
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 
 class Task(TimeStampedBase):
     __tablename__ = "tasks"
@@ -28,6 +29,8 @@ class Task(TimeStampedBase):
     activities: Mapped[list["TaskActivity"]] = relationship(back_populates="task")
     comments: Mapped[list["Comment"]] = relationship(back_populates="task")
     attachments: Mapped[list["Attachment"]] = relationship(back_populates="task")
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
+
 
 
 class TaskDependency(TimeStampedBase):
