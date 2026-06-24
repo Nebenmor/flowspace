@@ -1,7 +1,9 @@
 import uuid
+import hashlib
+import json
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 from app.db.models.task import Task
@@ -12,6 +14,7 @@ from app.services.workspace_service import _get_org_or_404, _get_workspace_or_40
 from app.websockets.manager import manager
 from app.services.notification_service import create_notification
 from app.services.webhook_service import trigger_webhook_event
+from app.services.cache_service import get_cached, set_cached, invalidate_workspace_cache
 
 
 async def create_task(
@@ -75,6 +78,9 @@ async def create_task(
         "priority": task.priority,
     })
 
+    # Invalidate workspace task cache
+    await invalidate_workspace_cache(str(workspace.id))
+
     # Broadcast real-time event to workspace
     await manager.broadcast_to_workspace(
         workspace_id=str(workspace.id),
@@ -117,12 +123,30 @@ async def list_tasks(
     workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
     await _require_workspace_member(db, workspace.id, current_user.id)
 
+    # Build a deterministic cache key from the workspace + filters
+    filter_str = json.dumps(filters.__dict__, default=str, sort_keys=True)
+    filter_hash = hashlib.md5(filter_str.encode()).hexdigest()[:12]
+    cache_key = f"tasks:{workspace.id}:{filter_hash}"
+
+    # Return cached result if available
+    cached = await get_cached(cache_key)
+    if cached:
+        return cached
+
     query = select(Task).where(
         Task.workspace_id == workspace.id,
         Task.is_archived == False,
     )
 
-    # Apply filters
+    # Full-text search using PostgreSQL tsvector
+    if filters.search:
+        query = query.where(
+            Task.search_vector.op("@@")(
+                func.plainto_tsquery("english", filters.search)
+            )
+        )
+
+    # Apply remaining filters
     if filters.status:
         query = query.where(Task.status == filters.status)
     if filters.priority:
@@ -132,19 +156,11 @@ async def list_tasks(
     if filters.parent_id is not None:
         query = query.where(Task.parent_id == filters.parent_id)
     else:
-        # Default: only return root tasks (no parent)
         query = query.where(Task.parent_id.is_(None))
     if filters.is_overdue:
         query = query.where(
             Task.due_date < datetime.now(timezone.utc),
             Task.status.notin_(["done", "cancelled"]),
-        )
-    if filters.search:
-        query = query.where(
-            or_(
-                Task.title.ilike(f"%{filters.search}%"),
-                Task.description.ilike(f"%{filters.search}%"),
-            )
         )
 
     # Count total for pagination
@@ -159,13 +175,37 @@ async def list_tasks(
     result = await db.execute(query)
     tasks = list(result.scalars().all())
 
-    return {
-        "items": tasks,
+    response = {
+        "items": [
+            {
+                "id": str(t.id),
+                "workspace_id": str(t.workspace_id),
+                "parent_id": str(t.parent_id) if t.parent_id else None,
+                "title": t.title,
+                "description": t.description,
+                "status": t.status,
+                "priority": t.priority,
+                "assignee_id": str(t.assignee_id) if t.assignee_id else None,
+                "created_by": str(t.created_by),
+                "due_date": t.due_date.isoformat() if t.due_date else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+                "position": t.position,
+                "is_archived": t.is_archived,
+                "created_at": t.created_at.isoformat(),
+                "updated_at": t.updated_at.isoformat(),
+            }
+            for t in tasks
+        ],
         "total": total,
         "page": filters.page,
         "page_size": filters.page_size,
         "has_next": (offset + filters.page_size) < total,
     }
+
+    # Cache the result for 60 seconds
+    await set_cached(cache_key, response)
+
+    return response
 
 
 async def get_task(
@@ -250,7 +290,6 @@ async def update_task(
         }
         task.assignee_id = data.assignee_id
 
-        # Notify the newly assigned user
         if data.assignee_id:
             await create_notification(
                 db=db,
@@ -276,6 +315,7 @@ async def update_task(
                     task_id=str(task.id),
                     workspace_name=workspace.slug,
                 )
+
     if data.due_date is not None and data.due_date != task.due_date:
         changes["due_date"] = {
             "old": task.due_date.isoformat() if task.due_date else None,
@@ -283,13 +323,15 @@ async def update_task(
         }
         task.due_date = data.due_date
 
-    # Record audit trail only if something changed
     if changes:
         await _record_activity(
             db, task.id, current_user.id, "updated",
             {k: v["old"] for k, v in changes.items()},
             {k: v["new"] for k, v in changes.items()},
         )
+
+        # Invalidate workspace task cache
+        await invalidate_workspace_cache(str(workspace.id))
 
         # Broadcast real-time event to workspace
         await manager.broadcast_to_workspace(
@@ -315,7 +357,6 @@ async def update_task(
             },
         )
 
-        # Fire task.completed specifically if status changed to done
         if "status" in changes and changes["status"]["new"] == "done":
             await trigger_webhook_event(
                 db=db,
@@ -359,6 +400,9 @@ async def delete_task(
     # Soft delete
     task.is_archived = True
     await _record_activity(db, task.id, current_user.id, "archived", None, None)
+
+    # Invalidate workspace task cache
+    await invalidate_workspace_cache(str(workspace.id))
 
     # Broadcast real-time event
     await manager.broadcast_to_workspace(
@@ -415,7 +459,6 @@ async def create_subtask(
     workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
     await _require_workspace_member(db, workspace.id, current_user.id)
 
-    # Verify parent task exists in this workspace
     result = await db.execute(
         select(Task).where(
             Task.id == parent_task_id,
@@ -430,19 +473,15 @@ async def create_subtask(
             detail="Parent task not found",
         )
 
-    # Prevent more than one level of nesting —
-    # subtasks cannot have subtasks of their own
     if parent_task.parent_id is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot create a subtask of a subtask. Only one level of nesting is allowed.",
         )
 
-    # Validate assignee
     if data.assignee_id:
         await _require_workspace_member(db, workspace.id, data.assignee_id)
 
-    # Calculate position within siblings
     result = await db.execute(
         select(func.max(Task.position)).where(
             Task.workspace_id == workspace.id,
@@ -511,7 +550,6 @@ async def add_dependency(
     workspace = await _get_workspace_or_404(db, org.id, workspace_slug)
     await _require_workspace_member(db, workspace.id, current_user.id)
 
-    # Verify task exists
     result = await db.execute(
         select(Task).where(
             Task.id == task_id,
@@ -526,7 +564,6 @@ async def add_dependency(
             detail="Task not found",
         )
 
-    # Verify dependency target exists in same workspace
     result = await db.execute(
         select(Task).where(
             Task.id == data.depends_on_id,
@@ -540,21 +577,18 @@ async def add_dependency(
             detail="Target task not found in this workspace",
         )
 
-    # Prevent self-dependency
     if task_id == data.depends_on_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A task cannot depend on itself",
         )
 
-    # Prevent circular dependency
     if await _would_create_cycle(db, task_id, data.depends_on_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This dependency would create a circular relationship",
         )
 
-    # Check not already exists
     result = await db.execute(
         select(TaskDependency).where(
             TaskDependency.task_id == task_id,
@@ -644,11 +678,6 @@ async def _would_create_cycle(
     task_id: uuid.UUID,
     depends_on_id: uuid.UUID,
 ) -> bool:
-    """
-    Check if adding task_id -> depends_on_id would create a cycle.
-    We do a breadth-first traversal starting from depends_on_id,
-    following existing dependencies. If we reach task_id, it's a cycle.
-    """
     from app.db.models.task import TaskDependency
 
     visited = set()
