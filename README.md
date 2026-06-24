@@ -181,7 +181,7 @@ GET /health
 ### Start the Celery worker
 
 ```bash
-celery -A app.workers.celery_app worker --loglevel=info
+celery -A app.workers.celery_app worker --loglevel=info --pool=solo
 ```
 
 ### Start the Celery beat scheduler
