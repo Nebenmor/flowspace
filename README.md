@@ -1,262 +1,271 @@
 # Collab Tasks API
 
-A collaborative task management backend built with **FastAPI**, **PostgreSQL**, and **Redis**. Supports multi-tenant organizations, real-time collaboration via WebSockets, background job processing with Celery, and outbound webhook delivery.
+A production-grade REST + WebSocket API for real-time collaborative task management. Engineered for multi-tenant SaaS workloads — teams can create organizations, spin up workspaces, assign and track tasks in real time, receive notifications, and integrate with external services via webhooks.
+
+**[Demo page](http://localhost:8000/demo) · [Swagger UI](http://localhost:8000/docs) · [Postman Collection](docs/collab-tasks-api.postman_collection.json)**
 
 ---
 
-## Table of Contents
+## Architecture highlights
 
-- [Tech Stack](#tech-stack)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Environment Variables](#environment-variables)
-- [Running the App](#running-the-app)
-- [Background Workers](#background-workers)
-- [API Overview](#api-overview)
-- [Database Migrations](#database-migrations)
-- [WebSocket Events](#websocket-events)
-- [Webhooks](#webhooks)
+- **Multi-tenant data isolation** — every query is scoped to an organization and workspace; no cross-tenant data leakage by design
+- **Real-time sync** — WebSocket rooms per workspace broadcast task changes instantly to all connected clients
+- **Async throughout** — FastAPI + SQLAlchemy async + asyncpg; no blocking I/O on the main thread
+- **Background job processing** — Celery handles email delivery, webhook dispatch, and scheduled reminders without blocking API responses
+- **Resilient webhook delivery** — exponential backoff retry (1 min → 5 min → 30 min → 2 hr → 8 hr) with delivery logging and HMAC-SHA256 signature verification
+- **Performant search** — PostgreSQL `tsvector` full-text search with GIN index and auto-update trigger; no Elasticsearch dependency
+- **Layered caching** — Redis caches hot task list queries with workspace-scoped invalidation on every write
+- **Rate limiting** — per-user request limits enforced at middleware level before any route handler runs; fails open if Redis is unavailable
+- **Audit trail** — every task change is recorded with actor, timestamp, old value, and new value
 
 ---
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
 | Framework | FastAPI 0.133 |
-| Database | PostgreSQL (async via `asyncpg`) |
+| Database | PostgreSQL 15 (async via `asyncpg`) |
 | ORM | SQLAlchemy 2.0 (async) |
 | Migrations | Alembic |
-| Auth | JWT (access + refresh tokens via `python-jose`) |
-| Task Queue | Celery 5.6 + Redis 7 |
+| Cache | Redis 7 |
+| Task queue | Celery 5.6 + Redis broker |
 | Real-time | WebSockets (native FastAPI) |
 | Email | Resend API |
+| Auth | JWT — `python-jose` |
 | Validation | Pydantic v2 |
 | Python | 3.13 |
 
 ---
 
-## Features
+## Quick start
 
-- **Multi-tenant** — Organizations with slug-based routing; workspaces nested under orgs
-- **Task management** — Full CRUD, subtasks, task dependencies, priorities, statuses, due dates, archiving
-- **Labels & Custom Fields** — Flexible metadata per workspace
-- **Collaboration** — Comments, file attachments, activity feed per task
-- **Real-time presence** — WebSocket rooms per workspace; user join/leave/presence sync
-- **Notifications** — In-app notifications with read/unread state
-- **Webhooks** — Org-scoped outbound webhooks with delivery history and automatic retry
-- **Email** — Transactional emails (invitations, due-date reminders) via Celery workers
-- **Invitations** — Token-based workspace invitations
-- **Security** — Bcrypt password hashing (SHA-256 pre-hash to bypass 72-byte limit), hashed refresh token storage
+### Option A — Docker (recommended)
 
----
-
-## Project Structure
-
-```
-app/
-├── api/v1/            # Route handlers (one file per resource)
-│   ├── auth.py
-│   ├── organizations.py
-│   ├── workspaces.py
-│   ├── tasks.py
-│   ├── labels.py
-│   ├── custom_fields.py
-│   ├── activities.py
-│   ├── invitations.py
-│   ├── notifications.py
-│   ├── webhooks.py
-│   └── websockets.py
-├── core/
-│   ├── config.py      # Pydantic settings (loaded from .env)
-│   ├── dependencies.py # FastAPI dependency injectors (DB session, current user)
-│   ├── exceptions.py  # Global exception handlers
-│   └── security.py    # JWT creation/decoding, password hashing
-├── db/
-│   ├── models/        # SQLAlchemy ORM models
-│   ├── migrations/    # Alembic migration scripts
-│   └── session.py     # Async session factory
-├── schemas/           # Pydantic request/response schemas
-├── services/          # Business logic layer
-├── websockets/
-│   └── manager.py     # WebSocket connection & presence manager
-├── workers/
-│   ├── celery_app.py  # Celery app + beat schedule
-│   ├── email_tasks.py # Email delivery tasks
-│   └── webhook_tasks.py # Webhook dispatch & retry tasks
-└── main.py            # App entry point, router registration
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.13
-- PostgreSQL
-- Redis (or run via Docker)
-
-### 1. Clone and install dependencies
+Run the entire stack with one command. No local Python, PostgreSQL, or Redis installation needed.
 
 ```bash
-git clone <repo-url>
-cd collab-task-BE
+git clone https://github.com/Nebenmor/collab-tasks-api.git
+cd collab-tasks-api
+cp .env.example .env   # add your RESEND_API_KEY
+docker-compose up --build
+```
+
+Services started:
+- `api` — FastAPI at `http://localhost:8000`
+- `db` — PostgreSQL at port `5432`
+- `redis` — Redis at port `6379`
+- `worker` — Celery worker
+- `beat` — Celery Beat scheduler
+
+Migrations run automatically on startup.
+
+### Option B — Manual setup
+
+**Prerequisites:** Python 3.13, PostgreSQL, Redis
+
+```bash
+git clone https://github.com/Nebenmor/collab-tasks-api.git
+cd collab-tasks-api
 
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 2. Configure environment variables
+cp .env.example .env            # fill in your credentials
+docker-compose up -d redis      # or run Redis however you prefer
 
-```bash
-cp .env.example .env
-# Edit .env with your database, Redis, and Resend credentials
-```
-
-### 3. Start Redis
-
-```bash
-docker-compose up -d
-```
-
-This starts a Redis 7 container on port `6379` with AOF persistence.
-
-### 4. Run database migrations
-
-```bash
 alembic upgrade head
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 5. Start the API server
+**Start background workers** (two separate terminals):
 
 ```bash
-uvicorn app.main:app --reload
+celery -A app.workers.celery_app worker --loglevel=info --pool=solo
+celery -A app.workers.celery_app beat --loglevel=info
 ```
-
-The API will be available at `http://localhost:8000`. Interactive docs are at `http://localhost:8000/docs`.
 
 ---
 
-## Environment Variables
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in the values below.
 
 | Variable | Description |
 |---|---|
 | `APP_NAME` | Application display name |
 | `APP_VERSION` | API version string |
-| `DEBUG` | Enable debug mode (`True` / `False`) |
-| `SECRET_KEY` | JWT signing secret — **change in production** |
+| `DEBUG` | `True` in development, `False` in production |
+| `SECRET_KEY` | JWT signing secret — change in production |
 | `DATABASE_URL` | PostgreSQL connection string (`postgresql+asyncpg://...`) |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token lifetime (default: 15) |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token lifetime (default: 7) |
-| `BASE_URL` | Public base URL of the API (used in emails/links) |
+| `BASE_URL` | Public URL of the API (used in emails and links) |
 | `RESEND_API_KEY` | API key from [resend.com](https://resend.com) |
 | `EMAIL_FROM` | Sender address for transactional emails |
 | `REDIS_URL` | Redis connection URL (e.g. `redis://localhost:6379/0`) |
 
 ---
 
-## Running the App
+## API reference
 
-### Development
+All routes are versioned under `/api/v1`. Full interactive documentation at `/docs`.
 
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+| Resource | Base path |
+|---|---|
+| Auth | `/api/v1/auth` |
+| Organizations | `/api/v1/organizations` |
+| Workspaces | `/api/v1/organizations/{org_slug}/workspaces` |
+| Members | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/members` |
+| Tasks | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/tasks` |
+| Subtasks | `.../tasks/{task_id}/subtasks` |
+| Dependencies | `.../tasks/{task_id}/dependencies` |
+| Labels | `.../workspaces/{workspace_slug}/labels` |
+| Custom fields | `.../workspaces/{workspace_slug}/custom-fields` |
+| Activities | `.../tasks/{task_id}/activities` |
+| Invitations | `/api/v1/invitations` |
+| Notifications | `/api/v1/notifications` |
+| Webhooks | `/api/v1/organizations/{org_slug}/webhooks` |
+| Analytics | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/analytics` |
+
+### Task filtering and search
+
+The task list endpoint supports rich filtering via query parameters:
+
+```
+GET /api/v1/.../tasks?status=in_progress&priority=high&assignee_id=...&is_overdue=true&search=pipeline&page=1&page_size=20
 ```
 
-### Health check
+Search uses PostgreSQL full-text search (`tsvector`) — stemming-aware, GIN-indexed, and significantly faster than `ILIKE` at scale. Results are cached in Redis for 60 seconds and automatically invalidated on any write to the workspace.
+
+### Analytics endpoints
 
 ```
-GET /health
-→ { "status": "ok", "app": "Collab Tasks API" }
+GET .../analytics/tasks-summary          # total, completed, overdue counts + completion rate
+GET .../analytics/completed-over-time    # tasks completed per day (default: last 30 days)
+GET .../analytics/team-productivity      # completed vs open tasks per member
+GET .../analytics/time-to-completion     # avg hours/days from creation to completion by priority
 ```
 
 ---
 
-## Background Workers
+## WebSocket events
 
-### Start the Celery worker
+Connect: `ws://localhost:8000/ws/{workspace_id}?token=<access_token>`
 
-```bash
-celery -A app.workers.celery_app worker --loglevel=info --pool=solo
+| Event | Direction | Payload |
+|---|---|---|
+| `user.joined` | server → client | `{ user_id }` |
+| `user.left` | server → client | `{ user_id }` |
+| `presence.sync` | server → client | `{ online_users: [...] }` |
+| `task.created` | server → client | `{ task_id, title, created_by, status, priority }` |
+| `task.updated` | server → client | `{ task_id, changes, updated_by }` |
+| `task.deleted` | server → client | `{ task_id, deleted_by }` |
+
+---
+
+## Webhook system
+
+Webhooks are org-scoped and fire on configurable events. Every delivery is logged with status and response details. Failed deliveries retry automatically on an exponential backoff schedule: 1 min → 5 min → 30 min → 2 hr → 8 hr.
+
+**Supported events:** `task.created` · `task.updated` · `task.completed` · `task.deleted`
+
+Each request is signed with `HMAC-SHA256`. Verify on your end:
+
+```python
+import hmac, hashlib
+
+def verify_signature(secret: str, payload: str, signature: str) -> bool:
+    expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
 ```
 
-### Start the Celery beat scheduler
+---
 
-```bash
-celery -A app.workers.celery_app beat --loglevel=info
+## Rate limiting
+
+All endpoints are rate-limited at **60 requests per minute per user**. Authenticated requests are bucketed by JWT token; unauthenticated requests by IP.
+
+When the limit is exceeded:
+
+```
+HTTP 429 Too Many Requests
+Retry-After: 47
+
+{ "detail": "Rate limit exceeded. Too many requests.", "retry_after": 47 }
 ```
 
-### Scheduled tasks
+---
+
+## Background jobs
 
 | Task | Schedule | Description |
 |---|---|---|
-| `retry_failed_webhooks` | Every 5 minutes | Retries webhook deliveries that previously failed |
-| `send_due_date_reminders` | Daily at 08:00 UTC | Emails users about tasks due soon |
+| `deliver_webhook_task` | On demand | HTTP delivery of a single webhook event |
+| `retry_failed_webhooks` | Every 5 minutes | Requeues failed deliveries due for retry |
+| `send_task_assigned_email` | On demand | Email notification on task assignment |
+| `send_invitation_email` | On demand | Invitation email to new org members |
+| `send_due_date_reminders` | Daily at 08:00 UTC | Emails users about tasks due within 24 hours |
 
 ---
 
-## API Overview
-
-All routes are versioned under `/api/v1`.
-
-| Resource | Base Path | Notes |
-|---|---|---|
-| Auth | `/api/v1/auth` | Register, login, token refresh, current user |
-| Organizations | `/api/v1/organizations` | CRUD for orgs (slug-based) |
-| Workspaces | `/api/v1/organizations/{org_slug}/workspaces` | |
-| Tasks | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/tasks` | Includes subtasks, dependencies, filters |
-| Labels | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/labels` | |
-| Custom Fields | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/custom-fields` | |
-| Activities | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/tasks/{task_id}/activities` | |
-| Invitations | `/api/v1/invitations` | Token-based workspace invites |
-| Notifications | `/api/v1/notifications` | Per-user; supports unread filtering |
-| Webhooks | `/api/v1/organizations/{org_slug}/webhooks` | Includes delivery history |
-
-Full interactive documentation is available at `/docs` (Swagger UI) and `/redoc`.
-
----
-
-## Database Migrations
+## Database migrations
 
 ```bash
-# Apply all pending migrations
-alembic upgrade head
-
-# Create a new migration (after changing models)
-alembic revision --autogenerate -m "describe your change"
-
-# Roll back one step
-alembic downgrade -1
+alembic upgrade head                              # apply all pending migrations
+alembic revision --autogenerate -m "description" # generate migration from model changes
+alembic downgrade -1                              # roll back one step
+alembic history                                   # view migration history
 ```
 
 ---
 
-## WebSocket Events
+## Project structure
 
-Connect to: `ws://localhost:8000/ws/{workspace_id}?token=<access_token>`
-
-### Server → Client events
-
-| Event | Payload | Description |
-|---|---|---|
-| `user.joined` | `{ user_id }` | A user connected to the workspace |
-| `user.left` | `{ user_id }` | A user disconnected |
-| `presence.sync` | `{ online_users: [...] }` | Full presence list sent on connect |
+```
+app/
+├── api/v1/              # Route handlers (one file per resource)
+├── core/
+│   ├── config.py        # Pydantic settings loaded from .env
+│   ├── dependencies.py  # FastAPI DI — DB session, current user
+│   ├── exceptions.py    # Global exception handlers
+│   ├── middleware.py    # Rate limiting middleware
+│   ├── redis.py         # Redis client singleton
+│   └── security.py      # JWT and password hashing
+├── db/
+│   ├── models/          # SQLAlchemy ORM models
+│   ├── migrations/      # Alembic migration scripts
+│   └── session.py       # Async session factory
+├── schemas/             # Pydantic request/response schemas
+├── services/            # Business logic layer
+│   ├── task_service.py
+│   ├── analytics_service.py
+│   ├── cache_service.py
+│   ├── webhook_service.py
+│   └── notification_service.py
+├── static/
+│   └── demo.html        # Project demo page served at /demo
+├── websockets/
+│   └── manager.py       # WebSocket connection and presence manager
+├── workers/
+│   ├── celery_app.py    # Celery app + beat schedule
+│   ├── email_tasks.py   # Email delivery tasks
+│   └── webhook_tasks.py # Webhook dispatch and retry
+└── main.py              # App entry point and router registration
+```
 
 ---
 
-## Webhooks
-
-Webhooks are scoped to an organization and fire on configurable events. Each delivery is logged with status and response details. Failed deliveries are automatically retried every 5 minutes by the Celery beat worker.
+## Health check
 
 ```
-POST   /api/v1/organizations/{org_slug}/webhooks
-GET    /api/v1/organizations/{org_slug}/webhooks
-PATCH  /api/v1/organizations/{org_slug}/webhooks/{webhook_id}
-DELETE /api/v1/organizations/{org_slug}/webhooks/{webhook_id}
-GET    /api/v1/organizations/{org_slug}/webhooks/{webhook_id}/deliveries
+GET /health
+→ { "status": "ok", "app": "Real-Time Collaborative Task Management API" }
 ```
+
+---
+
+## License
+
+MIT
