@@ -1,0 +1,1310 @@
+{
+  "info": {
+    "_postman_id": "217285e2-f26c-4f49-9481-66cd100cf190",
+    "name": "Collab Tasks API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "46395820"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "pm.environment.set(\"access_token\", response.tokens.access_token);\r",
+                  "pm.environment.set(\"refresh_token\", response.tokens.refresh_token);\r",
+                  "console.log(\"✅ Token captured:\", response.tokens.access_token);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"test@example.com\",\r\n  \"password\": \"securepassword123\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Test User 2",
+          "request": {
+            "method": "POST",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Organizations",
+      "item": [
+        {
+          "name": "Create Organization",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Organizations",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Get Organization",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Acme Corporation\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Organization",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "members"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workspaces",
+      "item": [
+        {
+          "name": "Create Workspace",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Engineering\",\r\n  \"description\": \"Core engineering workspace\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Workspaces",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workspace",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Update Workspace",
+          "request": {
+            "method": "PATCH",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "List Workspace Members",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Add new user to workspace",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"user_id\": \"bc8ee04f-7ada-4175-aaac-b5796a4ac574\",\r\n  \"role\": \"member\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/engineering/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "engineering",
+                "members"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Invitations",
+      "item": [
+        {
+          "name": "Send Invitation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"newmember@example.com\",\r\n  \"role\": \"member\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}organizations/{{org_slug}}/invitations",
+              "host": [
+                "{{base_url}}organizations"
+              ],
+              "path": [
+                "{{org_slug}}",
+                "invitations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Invitations",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Invitation",
+          "request": {
+            "method": "POST",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Create Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "pm.environment.set(\"task_id\", response.id);\r",
+                  "console.log(\"✅ Task ID saved:\", response.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks (filtered by status)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks?status=todo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "todo"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks (search)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks?search=CI",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "CI"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks (overdue)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks?is_overdue=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "is_overdue",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Task",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"assignee_id\": \"58b25720-1ccc-4020-9915-6ad17d0a1268\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subtasks",
+      "item": [
+        {
+          "name": "Create Subtask",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "pm.environment.set(\"subtask_id\", response.id);\r",
+                  "console.log(\"✅ Subtask ID saved:\", response.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"title\": \"Write unit tests\",\r\n  \"priority\": \"medium\",\r\n  \"status\": \"todo\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/subtasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "subtasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Subtasks",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dependencies",
+      "item": [
+        {
+          "name": "Add Dependency",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/dependencies",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "dependencies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Dependencies",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Dependency",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/dependencies/{{dependency_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "dependencies",
+                "{{dependency_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Labels",
+      "item": [
+        {
+          "name": "Create Label",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "pm.environment.set(\"label_id\", response.id);\r",
+                  "console.log(\"✅ Label ID saved:\", response.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/labels",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "labels"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Labels",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Add Label to Task",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/labels",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "labels"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Task Labels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/labels",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "labels"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Label from Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/labels/{{label_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "labels",
+                "{{label_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Label",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Custom Fields",
+      "item": [
+        {
+          "name": "Create Custom Field (select)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "pm.environment.set(\"field_id\", response.id);\r",
+                  "console.log(\"✅ Field ID saved:\", response.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/custom-fields",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "custom-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Custom Field (number)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/custom-fields",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "custom-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Custom Fields",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/custom-fields",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "custom-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set Field Value",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/custom-fields/{{field_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "custom-fields",
+                "{{field_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Field Values",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/custom-fields",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "custom-fields"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Activity",
+      "item": [
+        {
+          "name": "Task Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/tasks/{{task_id}}/activity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "tasks",
+                "{{task_id}}",
+                "activity"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Workspace Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/activity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "activity"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "User Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/members/{{member_id}}/activity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "members",
+                "{{member_id}}",
+                "activity"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Unread Only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications?unread_only=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "unread_only",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as Read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/{{notification_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notification_id}}",
+                "read"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mark All as Read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/read-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Notification",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/{{notification_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notification_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Create Webhook",
+          "request": {
+            "method": "POST",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "List Webhooks:",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Update Webhook",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"is_active\": false\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/webhooks/{{webhook_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "webhooks",
+                "{{webhook_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {
+            "method": "DELETE",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "List Deliveries",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Tasks Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/analytics/analytics/tasks-summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "analytics",
+                "analytics",
+                "tasks-summary"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Completed Over Time",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/analytics/analytics/completed-over-time",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "analytics",
+                "analytics",
+                "completed-over-time"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Team Productivity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/analytics/team-productivity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "analytics",
+                "team-productivity"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Time To Completion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organizations/{{org_slug}}/workspaces/{{workspace_slug}}/analytics/time-to-completion",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "organizations",
+                "{{org_slug}}",
+                "workspaces",
+                "{{workspace_slug}}",
+                "analytics",
+                "time-to-completion"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ]
+}
