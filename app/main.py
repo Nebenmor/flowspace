@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy import text
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
@@ -22,6 +24,9 @@ app = FastAPI(
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
 )
+
+# Static files — serves app/static/ at /static
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Middleware — registered before routers
 app.add_middleware(RateLimitMiddleware)
@@ -51,3 +56,8 @@ async def startup():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+@app.get("/demo", include_in_schema=False)
+async def demo():
+    return FileResponse("app/static/demo.html")
