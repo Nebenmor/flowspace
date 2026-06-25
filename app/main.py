@@ -13,6 +13,7 @@ from app.api.v1.activities import router as activity_router
 from app.api.v1.websockets import router as ws_router
 from app.api.v1.notifications import router as notification_router
 from app.api.v1.webhooks import router as webhook_router
+from app.api.v1.analytics import router as analytics_router
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import RateLimitMiddleware
 
@@ -37,6 +38,7 @@ app.include_router(activity_router, prefix="/api/v1")
 app.include_router(ws_router)
 app.include_router(notification_router, prefix="/api/v1")
 app.include_router(webhook_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 
 
 @app.on_event("startup")
