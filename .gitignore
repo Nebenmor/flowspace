@@ -4,4 +4,7 @@ __pycache__/
 .env
 *.egg-info/
 .pytest_cache/
-.coverage
+.coverage.env
+*.pyc
+__pycache__/
+celerybeat-schedule*
