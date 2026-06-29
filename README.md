@@ -1,4 +1,4 @@
-# Collab Tasks API
+# Flowspace
 
 A production-grade REST + WebSocket API for real-time collaborative task management. Engineered for multi-tenant SaaS workloads — teams can create organizations, spin up workspaces, assign and track tasks in real time, receive notifications, and integrate with external services via webhooks.
 
