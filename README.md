@@ -269,3 +269,28 @@ GET /health
 ## License
 
 MIT
+
+---
+
+## Testing
+
+The test suite covers the three most critical flows: authentication, task management, and webhook delivery.
+
+```bash
+# Create the test database (first time only)
+psql -U postgres -c "CREATE DATABASE collab_tasks_test;"
+
+# Make sure Redis is running
+docker-compose up -d redis
+
+# Run all tests
+pytest -v
+```
+
+**Coverage:** 35 tests across 3 files — `test_auth.py`, `test_tasks.py`, `test_webhooks.py`
+
+| Suite | Tests | What it covers |
+|---|---|---|
+| Auth | 12 | Register, login, token refresh, protected routes |
+| Tasks | 14 | CRUD, filters, search, assignment email trigger, soft delete |
+| Webhooks | 9 | CRUD, signature verification, delivery trigger, retry backoff |
