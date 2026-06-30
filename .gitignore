@@ -1,10 +1,19 @@
-venv/
-__pycache__/
+# ── Backend (Python) ──────────────────────────────────────────────────────────
+backend/venv/
+backend/.env
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/celerybeat-schedule*
+backend/*.egg-info/
+backend/.coverage
 *.pyc
-.env
-*.egg-info/
-.pytest_cache/
-.coverage.env
-*.pyc
-__pycache__/
-celerybeat-schedule*
+
+# ── Frontend (Node) ───────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# ── General ───────────────────────────────────────────────────────────────────
+.DS_Store
+*.log
