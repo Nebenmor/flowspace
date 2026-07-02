@@ -78,6 +78,11 @@ async def create_task(
         "priority": task.priority,
     })
 
+    # Commit before invalidating cache / broadcasting — otherwise a client
+    # refetching in response to the WS event below can race ahead of this
+    # transaction and re-populate the cache with pre-update data.
+    await db.commit()
+
     # Invalidate workspace task cache
     await invalidate_workspace_cache(str(workspace.id))
 
@@ -330,6 +335,11 @@ async def update_task(
             {k: v["new"] for k, v in changes.items()},
         )
 
+        # Commit before invalidating cache / broadcasting — otherwise a client
+        # refetching in response to the WS event below can race ahead of this
+        # transaction and re-populate the cache with pre-update data.
+        await db.commit()
+
         # Invalidate workspace task cache
         await invalidate_workspace_cache(str(workspace.id))
 
@@ -400,6 +410,11 @@ async def delete_task(
     # Soft delete
     task.is_archived = True
     await _record_activity(db, task.id, current_user.id, "archived", None, None)
+
+    # Commit before invalidating cache / broadcasting — otherwise a client
+    # refetching in response to the WS event below can race ahead of this
+    # transaction and re-populate the cache with pre-delete data.
+    await db.commit()
 
     # Invalidate workspace task cache
     await invalidate_workspace_cache(str(workspace.id))
