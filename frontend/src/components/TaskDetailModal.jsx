@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, AlertTriangle, Clock, User, Calendar, Lock } from 'lucide-react'
-import { getTask, updateTask } from '../api/tasks'
+import { X, AlertTriangle, Clock, User, Calendar, Lock, Tag, Plus, ListTree, Link2, Trash2, Check } from 'lucide-react'
+import { getTask, updateTask, listTasks } from '../api/tasks'
 import { getTaskActivity } from '../api/activities'
+import { listLabels, listTaskLabels, addTaskLabel, removeTaskLabel } from '../api/labels'
+import { listCustomFields, listTaskCustomFieldValues, setCustomFieldValue } from '../api/customFields'
+import { listSubtasks, createSubtask } from '../api/subtasks'
+import { listDependencies, addDependency, removeDependency } from '../api/dependencies'
 import { isOverdue, overdueDays } from '../utils/taskDates'
 import { useAuth } from '../context/AuthContext'
 
@@ -33,6 +37,359 @@ function formatValue(key, value, memberName) {
   if (key === 'due_date') return new Date(value).toLocaleDateString()
   if (key === 'assignee_id') return memberName ? memberName(value) : value
   return String(value).replace('_', ' ')
+}
+
+function LabelsSection({ orgSlug, workspaceSlug, taskId, isAdmin }) {
+  const queryClient = useQueryClient()
+  const [showPicker, setShowPicker] = useState(false)
+
+  const { data: allLabels } = useQuery({
+    queryKey: ['labels', orgSlug, workspaceSlug],
+    queryFn: () => listLabels(orgSlug, workspaceSlug).then((r) => r.data),
+  })
+
+  const { data: taskLabels } = useQuery({
+    queryKey: ['task-labels', orgSlug, workspaceSlug, taskId],
+    queryFn: () => listTaskLabels(orgSlug, workspaceSlug, taskId).then((r) => r.data),
+  })
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['task-labels', orgSlug, workspaceSlug, taskId] })
+
+  const addMutation = useMutation({
+    mutationFn: (labelId) => addTaskLabel(orgSlug, workspaceSlug, taskId, labelId),
+    onSuccess: invalidate,
+  })
+  const removeMutation = useMutation({
+    mutationFn: (labelId) => removeTaskLabel(orgSlug, workspaceSlug, taskId, labelId),
+    onSuccess: invalidate,
+  })
+
+  const attachedIds = new Set((taskLabels || []).map((l) => l.id))
+  const available = (allLabels || []).filter((l) => !attachedIds.has(l.id))
+
+  if (!isAdmin && (allLabels || []).length === 0) return null
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+        <Tag size={12} /> Labels
+      </h3>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(taskLabels || []).map((label) => (
+          <span
+            key={label.id}
+            className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: `${label.color}22`, color: label.color }}
+          >
+            {label.name}
+            <button onClick={() => removeMutation.mutate(label.id)} className="hover:opacity-70">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+
+        <div className="relative">
+          <button
+            onClick={() => setShowPicker((s) => !s)}
+            className="flex items-center gap-1 text-xs text-slate-500 border border-dashed border-slate-300 rounded-full px-2 py-0.5 hover:border-slate-400"
+          >
+            <Plus size={10} /> Add
+          </button>
+          {showPicker && (
+            <div className="absolute z-10 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-40 max-h-40 overflow-y-auto">
+              {available.length === 0 ? (
+                <p className="text-xs text-slate-400 px-3 py-1.5">No more labels</p>
+              ) : (
+                available.map((label) => (
+                  <button
+                    key={label.id}
+                    onClick={() => {
+                      addMutation.mutate(label.id)
+                      setShowPicker(false)
+                    }}
+                    className="w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50 flex items-center gap-1.5"
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: label.color }} />
+                    {label.name}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CustomFieldInput({ field, value, onSave }) {
+  const [local, setLocal] = useState(value ?? '')
+
+  useEffect(() => setLocal(value ?? ''), [value])
+
+  const commit = (v) => {
+    if (v === '' || v === null || v === undefined) return
+    onSave(v)
+  }
+
+  if (field.field_type === 'boolean') {
+    return (
+      <select
+        value={local === true || local === 'true' ? 'true' : 'false'}
+        onChange={(e) => { setLocal(e.target.value); commit(e.target.value === 'true') }}
+        className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-2.5 py-1.5"
+      >
+        <option value="false">No</option>
+        <option value="true">Yes</option>
+      </select>
+    )
+  }
+  if (field.field_type === 'select') {
+    return (
+      <select
+        value={local}
+        onChange={(e) => { setLocal(e.target.value); commit(e.target.value) }}
+        className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-2.5 py-1.5"
+      >
+        <option value="">—</option>
+        {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    )
+  }
+  return (
+    <input
+      type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => commit(local)}
+      className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-2.5 py-1.5"
+    />
+  )
+}
+
+function CustomFieldsSection({ orgSlug, workspaceSlug, taskId }) {
+  const queryClient = useQueryClient()
+
+  const { data: fields } = useQuery({
+    queryKey: ['custom-fields', orgSlug, workspaceSlug],
+    queryFn: () => listCustomFields(orgSlug, workspaceSlug).then((r) => r.data),
+  })
+
+  const { data: values } = useQuery({
+    queryKey: ['task-custom-field-values', orgSlug, workspaceSlug, taskId],
+    queryFn: () => listTaskCustomFieldValues(orgSlug, workspaceSlug, taskId).then((r) => r.data),
+  })
+
+  const saveMutation = useMutation({
+    mutationFn: ({ fieldId, value }) => setCustomFieldValue(orgSlug, workspaceSlug, taskId, fieldId, value),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task-custom-field-values', orgSlug, workspaceSlug, taskId] }),
+  })
+
+  if (!fields || fields.length === 0) return null
+
+  const valueFor = (fieldId) => values?.find((v) => v.field_id === fieldId)?.value
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-slate-500 mb-2">Custom fields</h3>
+      <div className="grid grid-cols-2 gap-3">
+        {fields.map((field) => (
+          <div key={field.id}>
+            <label className="text-xs font-medium text-slate-500">{field.name}</label>
+            <CustomFieldInput
+              field={field}
+              value={valueFor(field.id)}
+              onSave={(value) => saveMutation.mutate({ fieldId: field.id, value })}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SubtasksSection({ orgSlug, workspaceSlug, taskId }) {
+  const queryClient = useQueryClient()
+  const [newTitle, setNewTitle] = useState('')
+
+  const { data: subtasks } = useQuery({
+    queryKey: ['subtasks', orgSlug, workspaceSlug, taskId],
+    queryFn: () => listSubtasks(orgSlug, workspaceSlug, taskId).then((r) => r.data),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (title) => createSubtask(orgSlug, workspaceSlug, taskId, { title }),
+    onSuccess: () => {
+      setNewTitle('')
+      queryClient.invalidateQueries({ queryKey: ['subtasks', orgSlug, workspaceSlug, taskId] })
+    },
+  })
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ subtaskId, status }) => updateTask(orgSlug, workspaceSlug, subtaskId, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['subtasks', orgSlug, workspaceSlug, taskId] }),
+  })
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+        <ListTree size={12} /> Subtasks
+      </h3>
+      <div className="space-y-1.5">
+        {(subtasks || []).map((sub) => {
+          const done = sub.status === 'done'
+          return (
+            <div key={sub.id} className="flex items-center gap-2 text-sm">
+              <button
+                onClick={() => toggleMutation.mutate({ subtaskId: sub.id, status: done ? 'todo' : 'done' })}
+                className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                  done ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-300'
+                }`}
+              >
+                {done && <Check size={11} />}
+              </button>
+              <span className={done ? 'line-through text-slate-400' : 'text-slate-700'}>{sub.title}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (newTitle.trim()) createMutation.mutate(newTitle.trim())
+        }}
+        className="flex items-center gap-1.5 mt-2"
+      >
+        <input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder="Add a subtask..."
+          className="flex-1 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-900"
+        />
+        <button
+          type="submit"
+          disabled={!newTitle.trim() || createMutation.isPending}
+          className="text-sm px-2.5 py-1.5 bg-slate-900 text-white rounded-lg disabled:opacity-40"
+        >
+          <Plus size={14} />
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function DependencyRow({ orgSlug, workspaceSlug, dep, onRemove }) {
+  const { data: depTask } = useQuery({
+    queryKey: ['task', orgSlug, workspaceSlug, dep.depends_on_id],
+    queryFn: () => getTask(orgSlug, workspaceSlug, dep.depends_on_id).then((r) => r.data),
+    staleTime: 60_000,
+  })
+
+  return (
+    <div className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-2.5 py-1.5">
+      <span className="text-slate-700 truncate">
+        {depTask?.title || 'Loading...'}
+        <span className="text-slate-400 ml-1.5 text-xs">({dep.dependency_type.replace('_', ' ')})</span>
+      </span>
+      <button onClick={onRemove} className="text-slate-400 hover:text-red-600 flex-shrink-0">
+        <Trash2 size={13} />
+      </button>
+    </div>
+  )
+}
+
+function DependenciesSection({ orgSlug, workspaceSlug, taskId }) {
+  const queryClient = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
+
+  const { data: dependencies } = useQuery({
+    queryKey: ['dependencies', orgSlug, workspaceSlug, taskId],
+    queryFn: () => listDependencies(orgSlug, workspaceSlug, taskId).then((r) => r.data),
+  })
+
+  const { data: searchResults } = useQuery({
+    queryKey: ['task-search', orgSlug, workspaceSlug, search],
+    queryFn: () => listTasks(orgSlug, workspaceSlug, { search, page_size: 8 }).then((r) => r.data),
+    enabled: showPicker && search.trim().length > 1,
+  })
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dependencies', orgSlug, workspaceSlug, taskId] })
+
+  const addMutation = useMutation({
+    mutationFn: (dependsOnId) => addDependency(orgSlug, workspaceSlug, taskId, dependsOnId),
+    onSuccess: () => {
+      invalidate()
+      setShowPicker(false)
+      setSearch('')
+    },
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (dependencyId) => removeDependency(orgSlug, workspaceSlug, taskId, dependencyId),
+    onSuccess: invalidate,
+  })
+
+  const results = (searchResults?.items || []).filter((t) => t.id !== taskId)
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+        <Link2 size={12} /> Depends on
+      </h3>
+      <div className="space-y-1.5">
+        {(dependencies || []).length === 0 && !showPicker && (
+          <p className="text-sm text-slate-400">No dependencies</p>
+        )}
+        {(dependencies || []).map((dep) => (
+          <DependencyRow
+            key={dep.id}
+            orgSlug={orgSlug}
+            workspaceSlug={workspaceSlug}
+            dep={dep}
+            onRemove={() => removeMutation.mutate(dep.id)}
+          />
+        ))}
+      </div>
+
+      {showPicker ? (
+        <div className="mt-2 relative">
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tasks..."
+            className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-900"
+          />
+          {search.trim().length > 1 && (
+            <div className="absolute z-10 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg w-full max-h-40 overflow-y-auto">
+              {results.length === 0 ? (
+                <p className="text-xs text-slate-400 px-3 py-1.5">No matching tasks</p>
+              ) : (
+                results.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => addMutation.mutate(t.id)}
+                    className="w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50 truncate"
+                  >
+                    {t.title}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowPicker(true)}
+          className="flex items-center gap-1 text-xs text-slate-500 border border-dashed border-slate-300 rounded-full px-2 py-0.5 hover:border-slate-400 mt-1.5"
+        >
+          <Plus size={10} /> Add dependency
+        </button>
+      )}
+    </div>
+  )
 }
 
 export default function TaskDetailModal({ task, orgSlug, workspaceSlug, members = [], onClose }) {
@@ -205,6 +562,14 @@ export default function TaskDetailModal({ task, orgSlug, workspaceSlug, members 
               className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>
+
+          <LabelsSection orgSlug={orgSlug} workspaceSlug={workspaceSlug} taskId={t.id} isAdmin={isAdmin} />
+
+          <CustomFieldsSection orgSlug={orgSlug} workspaceSlug={workspaceSlug} taskId={t.id} />
+
+          <SubtasksSection orgSlug={orgSlug} workspaceSlug={workspaceSlug} taskId={t.id} />
+
+          <DependenciesSection orgSlug={orgSlug} workspaceSlug={workspaceSlug} taskId={t.id} />
 
           {/* Activity / audit history */}
           <div>
