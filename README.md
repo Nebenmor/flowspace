@@ -16,9 +16,9 @@ A production-grade REST + WebSocket API for real-time collaborative task managem
 |---|---|
 | ![Task detail](docs/screenshots/task-detail.png) | ![Settings](docs/screenshots/settings.png) |
 
-| Analytics | Analytics |
+| Analytics-1 | Analytics-2 |
 |---|---|
-| ![Analytics detail](docs/screenshots/analytics.png) | ![Analytics](docs/screenshots/analytics-2.png) |
+| ![Analytics detail](docs/screenshots/analytics.png) | ![Analytics detail](docs/screenshots/analytics-2.png) |
 
 ---
 
