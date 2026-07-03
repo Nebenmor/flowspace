@@ -1,44 +1,43 @@
 # Flowspace
 
-Flowspace is a real-time collaborative task management platform for teams. Organizations spin up workspaces, assign and track tasks together, and see changes as they happen — no refreshing, no waiting. A production-grade API handles the heavy lifting (multi-tenant data isolation, live sync, background jobs, resilient webhook delivery) behind a clean, fast dashboard built for daily use.
+A production-grade REST + WebSocket API for real-time collaborative task management. Engineered for multi-tenant SaaS workloads — teams can create organizations, spin up workspaces, assign and track tasks in real time, receive notifications, and integrate with external services via webhooks.
 
-**[Demo page](http://localhost:8000/demo) · [Swagger UI](http://localhost:8000/docs) · [Postman Collection](./docs/collab-tasks-api.postman_collection.json)**
+**[Demo page](http://localhost:8000/demo) · [Swagger UI](http://localhost:8000/docs) · [Postman Collection](docs/collab-tasks-api.postman_collection.json)**
 
 ---
 
-## What's inside
+## Screenshots
 
-This is a monorepo with two apps:
+| Dashboard | Tasks |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Tasks](docs/screenshots/tasks.png) |
 
-```
-flowspace/
-├── backend/     # FastAPI + PostgreSQL + Redis + Celery — the REST + WebSocket API
-├── frontend/    # React + Vite dashboard that consumes the API
-└── docs/        # Postman collection, etc.
-```
+| Task detail | Settings |
+|---|---|
+| ![Task detail](docs/screenshots/task-detail.png) | ![Settings](docs/screenshots/settings.png) |
 
-Each app can be run and developed independently, but they're designed to work together: the frontend's dev server proxies API and WebSocket calls straight through to the backend, and in production the two are typically deployed as separate services that talk over HTTPS/WSS.
+| Analytics | Analytics |
+|---|---|
+| ![Analytics detail](docs/screenshots/analytics.png) | ![Analytics](docs/screenshots/analytics-2.png) |
 
 ---
 
 ## Architecture highlights
 
 - **Multi-tenant data isolation** — every query is scoped to an organization and workspace; no cross-tenant data leakage by design
-- **Real-time sync** — WebSocket rooms per workspace broadcast task changes and presence instantly to all connected clients
-- **Live dashboard** — the React frontend reflects task, presence, and notification changes as they happen, no manual refresh needed
+- **Real-time sync** — WebSocket rooms per workspace broadcast task changes instantly to all connected clients
 - **Async throughout** — FastAPI + SQLAlchemy async + asyncpg; no blocking I/O on the main thread
 - **Background job processing** — Celery handles email delivery, webhook dispatch, and scheduled reminders without blocking API responses
 - **Resilient webhook delivery** — exponential backoff retry (1 min → 5 min → 30 min → 2 hr → 8 hr) with delivery logging and HMAC-SHA256 signature verification
 - **Performant search** — PostgreSQL `tsvector` full-text search with GIN index and auto-update trigger; no Elasticsearch dependency
-- **Layered caching** — Redis caches hot task list queries with workspace-scoped invalidation on every write
+- **Layered caching** — Redis caches hot task list queries with workspace-scoped invalidation on every write; fails open (falls through to Postgres) if Redis is unavailable
 - **Rate limiting** — per-user request limits enforced at middleware level before any route handler runs; fails open if Redis is unavailable
+- **Role-based permissions** — workspace roles (`admin` / `member` / `viewer`) gate sensitive actions; changing a task's due date requires `admin`
 - **Audit trail** — every task change is recorded with actor, timestamp, old value, and new value
 
 ---
 
 ## Tech stack
-
-### Backend
 
 | Layer | Technology |
 |---|---|
@@ -54,50 +53,52 @@ Each app can be run and developed independently, but they're designed to work to
 | Validation | Pydantic v2 |
 | Python | 3.13 |
 
-### Frontend
+**Frontend**
 
 | Layer | Technology |
 |---|---|
-| Framework | React 19 |
-| Build tool | Vite 8 |
+| Framework | React 19 + Vite |
 | Routing | React Router 7 |
-| Data fetching / cache | TanStack Query 5 |
+| Data fetching | TanStack Query 5 |
 | HTTP client | Axios |
 | Styling | Tailwind CSS 4 |
 | Charts | Recharts |
-| Icons | Lucide |
+| Icons | lucide-react |
 
 ---
 
 ## Quick start
 
-### Option A — Docker (backend only, recommended for the API)
+This repo has two projects — `backend/` (FastAPI) and `frontend/` (React) — plus a root-level `docker-compose.yml` that runs both.
 
-Run the entire backend stack with one command. No local Python, PostgreSQL, or Redis installation needed.
+### Option A — Docker (recommended)
+
+One command starts the entire stack: database, cache, API, background workers, **and** the frontend. No local Python, Node, PostgreSQL, or Redis installation needed.
 
 ```bash
 git clone https://github.com/Nebenmor/flowspace.git
-cd flowspace/backend
-cp .env.example .env   # add your RESEND_API_KEY
+cd flowspace
+cp backend/.env.example backend/.env   # add your RESEND_API_KEY
 docker-compose up --build
 ```
 
 Services started:
+- `frontend` — React app at `http://localhost:5173`
 - `api` — FastAPI at `http://localhost:8000`
 - `db` — PostgreSQL at port `5432`
 - `redis` — Redis at port `6379`
 - `worker` — Celery worker
 - `beat` — Celery Beat scheduler
 
-Migrations run automatically on startup.
+Migrations run automatically on startup. Open `http://localhost:5173` — that's the whole app; its nginx container proxies `/api` and `/ws` through to the backend internally, so there's nothing else to configure.
 
-Then, in a separate terminal, start the frontend against it (see below).
+> `backend/docker-compose.yml` also exists separately, for backend developers who just want the API + its infra without rebuilding the frontend on every change — run it from inside `backend/` the same way. The root-level `docker-compose.yml` above is the one that runs everything.
 
 ### Option B — Manual setup
 
-**Prerequisites:** Python 3.13, Node.js 18+, PostgreSQL, Redis
+**Prerequisites:** Python 3.13, Node 20+, PostgreSQL, Redis
 
-**1. Backend**
+**Backend:**
 
 ```bash
 git clone https://github.com/Nebenmor/flowspace.git
@@ -121,23 +122,21 @@ celery -A app.workers.celery_app worker --loglevel=info --pool=solo
 celery -A app.workers.celery_app beat --loglevel=info
 ```
 
-**2. Frontend**
+**Frontend** (in a separate terminal, from the repo root):
 
 ```bash
-cd flowspace/frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173` and proxies `/api` and `/ws` requests to `http://localhost:8000` (configured in `vite.config.js`), so there's nothing extra to configure for local development — just make sure the backend is running first.
-
-Open `http://localhost:5173`, register an account, and you're in.
+Runs at `http://localhost:5173`. Vite's dev server proxies both `/api` and `/ws` to `http://localhost:8000` (see `vite.config.js`), so no CORS setup or `.env` is needed in development — just make sure the backend above is running first.
 
 ---
 
-## Backend environment variables
+## Environment variables
 
-Copy `backend/.env.example` to `backend/.env` and fill in the values below.
+Copy `.env.example` to `.env` and fill in the values below.
 
 | Variable | Description |
 |---|---|
@@ -152,40 +151,6 @@ Copy `backend/.env.example` to `backend/.env` and fill in the values below.
 | `RESEND_API_KEY` | API key from [resend.com](https://resend.com) |
 | `EMAIL_FROM` | Sender address for transactional emails |
 | `REDIS_URL` | Redis connection URL (e.g. `redis://localhost:6379/0`) |
-
-### Frontend configuration
-
-The frontend has no required environment variables for local development — `vite.config.js` proxies `/api` and `/ws` to `http://localhost:8000`. For a production build served separately from the API, put a reverse proxy (Nginx, Vercel rewrites, etc.) in front of the static build that forwards `/api` and `/ws` to your deployed backend, since the app calls the API using relative paths (`/api/v1/...`).
-
----
-
-## Frontend overview
-
-The frontend is a single-page dashboard with:
-
-- **Auth** — login and registration screens backed by JWT access/refresh tokens (`AuthContext`)
-- **Org & workspace switcher** — pick the active organization and workspace from the sidebar; the whole app scopes to that selection (`WorkspaceContext`)
-- **Dashboard** — greeting, task summary stats, recent tasks, and a notifications panel
-- **Tasks** — filterable task list, create/edit tasks, inline status changes, and a task detail modal
-- **Analytics** — charts for task summary, completions over time, team productivity, and time-to-completion, powered by Recharts
-- **Live updates** — a `useWebSocket` hook connects to the workspace's WebSocket room and invalidates the relevant TanStack Query caches whenever a `task.*` event arrives, so the UI updates without polling
-
-### Frontend structure
-
-```
-frontend/
-├── src/
-│   ├── api/            # Axios wrappers per resource (auth, tasks, workspaces, ...)
-│   ├── components/      # Sidebar, Layout, TaskCard, TaskDetailModal, TaskFilters, NotificationsPanel
-│   ├── context/          # AuthContext, WorkspaceContext
-│   ├── hooks/            # useWebSocket
-│   ├── pages/            # Login, Register, Dashboard, Tasks, Analytics
-│   ├── utils/            # taskDates helpers (overdue calculations, etc.)
-│   ├── App.jsx           # Route definitions and providers
-│   └── main.jsx          # Entry point
-├── vite.config.js        # Dev server + /api and /ws proxy config
-└── package.json
-```
 
 ---
 
@@ -204,11 +169,11 @@ All routes are versioned under `/api/v1`. Full interactive documentation at `/do
 | Dependencies | `.../tasks/{task_id}/dependencies` |
 | Labels | `.../workspaces/{workspace_slug}/labels` |
 | Custom fields | `.../workspaces/{workspace_slug}/custom-fields` |
-| Activities | `.../tasks/{task_id}/activity` |
-| Invitations | `/api/v1/organizations/{org_slug}/invitations` |
+| Activities | `.../tasks/{task_id}/activity`, `.../workspaces/{workspace_slug}/activity`, `.../members/{user_id}/activity` |
+| Invitations | `/api/v1/invitations` |
 | Notifications | `/api/v1/notifications` |
 | Webhooks | `/api/v1/organizations/{org_slug}/webhooks` |
-| Analytics | `.../workspaces/{workspace_slug}/analytics` |
+| Analytics | `/api/v1/organizations/{org_slug}/workspaces/{workspace_slug}/analytics` |
 
 ### Task filtering and search
 
@@ -223,13 +188,19 @@ Search uses PostgreSQL full-text search (`tsvector`) — stemming-aware, GIN-ind
 ### Analytics endpoints
 
 ```
-GET .../analytics/tasks-summary          # total, completed, in-progress, todo, in-review, and overdue counts + completion rate
-GET .../analytics/completed-over-time    # tasks completed per day (default: last 30 days, 7-365 configurable)
+GET .../analytics/tasks-summary          # total, completed, overdue counts + completion rate
+GET .../analytics/completed-over-time    # tasks completed per day (default: last 30 days)
 GET .../analytics/team-productivity      # completed vs open tasks per member
 GET .../analytics/time-to-completion     # avg hours/days from creation to completion by priority
 ```
 
-These same endpoints power the charts on the frontend's Analytics page.
+### Role-based permissions
+
+Each workspace member has a role: `admin`, `member`, or `viewer`. Most task actions (create, comment on status, assign) are open to any workspace member. A few actions are restricted to `admin`:
+
+- Changing a task's **due date** (`PATCH .../tasks/{task_id}` with `due_date`) — returns `403 Forbidden` for non-admins
+- Creating labels and custom fields
+- Updating or archiving the workspace, and adding workspace members
 
 ---
 
@@ -237,21 +208,14 @@ These same endpoints power the charts on the frontend's Analytics page.
 
 Connect: `ws://localhost:8000/ws/{org_slug}/{workspace_slug}?token=<access_token>`
 
-The frontend does this for you automatically via the `useWebSocket` hook once an organization and workspace are selected, connecting through Vite's dev proxy in development.
-
 | Event | Direction | Payload |
 |---|---|---|
 | `user.joined` | server → client | `{ user_id }` |
 | `user.left` | server → client | `{ user_id }` |
 | `presence.sync` | server → client | `{ online_users: [...] }` |
-| `presence.update` | client → server | `{ viewing }` — what the client is currently looking at |
-| `presence.updated` | server → client | `{ user_id, viewing }` |
 | `task.created` | server → client | `{ task_id, title, created_by, status, priority }` |
 | `task.updated` | server → client | `{ task_id, changes, updated_by }` |
 | `task.deleted` | server → client | `{ task_id, deleted_by }` |
-| `ping` / `pong` | client ↔ server | heartbeat |
-
-Every message is wrapped as `{ "event": ..., "data": ..., "timestamp": ... }`.
 
 ---
 
@@ -302,8 +266,6 @@ Retry-After: 47
 
 ## Database migrations
 
-Run these from `backend/`:
-
 ```bash
 alembic upgrade head                              # apply all pending migrations
 alembic revision --autogenerate -m "description" # generate migration from model changes
@@ -317,56 +279,76 @@ alembic history                                   # view migration history
 
 ```
 flowspace/
+├── docker-compose.yml    # Root-level — runs the ENTIRE stack (backend + frontend) with one command
 ├── backend/
-│   ├── app/
-│   │   ├── api/v1/              # Route handlers (one file per resource)
-│   │   ├── core/
-│   │   │   ├── config.py        # Pydantic settings loaded from .env
-│   │   │   ├── dependencies.py  # FastAPI DI — DB session, current user
-│   │   │   ├── exceptions.py    # Global exception handlers
-│   │   │   ├── middleware.py    # Rate limiting middleware
-│   │   │   ├── redis.py         # Redis client singleton
-│   │   │   └── security.py      # JWT and password hashing
-│   │   ├── db/
-│   │   │   ├── models/          # SQLAlchemy ORM models
-│   │   │   ├── migrations/      # Alembic migration scripts
-│   │   │   └── session.py       # Async session factory
-│   │   ├── schemas/             # Pydantic request/response schemas
-│   │   ├── services/            # Business logic layer
-│   │   │   ├── task_service.py
-│   │   │   ├── analytics_service.py
-│   │   │   ├── cache_service.py
-│   │   │   ├── webhook_service.py
-│   │   │   └── notification_service.py
-│   │   ├── static/
-│   │   │   └── demo.html        # Project demo page served at /demo
-│   │   ├── websockets/
-│   │   │   └── manager.py       # WebSocket connection and presence manager
-│   │   ├── workers/
-│   │   │   ├── celery_app.py    # Celery app + beat schedule
-│   │   │   ├── email_tasks.py   # Email delivery tasks
-│   │   │   └── webhook_tasks.py # Webhook dispatch and retry
-│   │   └── main.py              # App entry point and router registration
-│   ├── tests/                   # pytest suite (auth, tasks, webhooks)
-│   ├── docker-compose.yml       # api + db + redis + worker + beat
+│   ├── docker-compose.yml  # Backend-only stack (db, redis, api, worker, beat) for backend devs
 │   ├── Dockerfile
-│   ├── render.yaml               # Render.com deployment blueprint
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── api/                 # Axios wrappers per resource
-│   │   ├── components/          # Sidebar, Layout, TaskCard, TaskDetailModal, ...
-│   │   ├── context/              # AuthContext, WorkspaceContext
-│   │   ├── hooks/                # useWebSocket
-│   │   ├── pages/                # Login, Register, Dashboard, Tasks, Analytics
-│   │   └── App.jsx
-│   ├── vite.config.js
-│   └── package.json
-│
-└── docs/
-    └── collab-tasks-api.postman_collection.json
+│   └── app/
+│       ├── api/v1/              # Route handlers (one file per resource)
+│       ├── core/
+│       │   ├── config.py        # Pydantic settings loaded from .env
+│       │   ├── dependencies.py  # FastAPI DI — DB session, current user
+│       │   ├── exceptions.py    # Global exception handlers
+│       │   ├── middleware.py    # Rate limiting middleware
+│       │   ├── redis.py         # Redis client singleton
+│       │   └── security.py      # JWT and password hashing
+│       ├── db/
+│       │   ├── models/          # SQLAlchemy ORM models
+│       │   ├── migrations/      # Alembic migration scripts
+│       │   └── session.py       # Async session factory
+│       ├── schemas/             # Pydantic request/response schemas
+│       ├── services/            # Business logic layer
+│       │   ├── task_service.py
+│       │   ├── analytics_service.py
+│       │   ├── cache_service.py
+│       │   ├── webhook_service.py
+│       │   └── notification_service.py
+│       ├── static/
+│       │   └── demo.html        # Project demo page served at /demo
+│       ├── websockets/
+│       │   └── manager.py       # WebSocket connection and presence manager
+│       ├── workers/
+│       │   ├── celery_app.py    # Celery app + beat schedule
+│       │   ├── email_tasks.py   # Email delivery tasks
+│       │   └── webhook_tasks.py # Webhook dispatch and retry
+│       └── main.py              # App entry point and router registration
+└── frontend/
+    ├── Dockerfile        # Multi-stage build → served via nginx
+    ├── nginx.conf        # Proxies /api and /ws to the backend container
+    └── src/
+        ├── api/                  # One file per resource — thin axios wrappers
+        ├── components/           # TaskCard, TaskFilters, TaskDetailModal, NotificationsPanel, Sidebar, Layout
+        ├── context/              # AuthContext, WorkspaceContext
+        ├── hooks/
+        │   └── useWebSocket.js   # Subscribes to /ws/{org_slug}/{workspace_slug}, invalidates queries on task events
+        ├── pages/                # Login, Register, Dashboard, Tasks, Analytics, Settings
+        ├── utils/
+        │   └── taskDates.js      # Shared overdue calculations
+        └── App.jsx
 ```
+
+---
+
+## Feature coverage
+
+The frontend now covers the full backend API:
+
+- Auth (login/register/session)
+- Organization & workspace creation, switching, and settings (rename, archive)
+- Task CRUD, filtering, search, click-to-view detail with editable fields and full audit history
+- Subtasks, task dependencies (searchable picker), labels, and custom fields — all editable from the task detail view
+- Real-time task sync over WebSocket
+- Notifications panel (list, mark read/all-read)
+- Analytics dashboard (all four endpoints)
+- Role-gated actions: due-date editing (workspace admin), label/custom-field definitions (workspace admin), invitations/webhooks/role changes (org owner/admin)
+- Member invitations, organization role management, and adding existing org members to a workspace
+- Webhook configuration and delivery log viewer
+
+All of it lives under **Settings** (workspace, labels, custom fields, webhooks, members tabs) except task-level features, which live in the task detail modal.
+
+**Known gaps**, mostly reflecting the backend's own current shape rather than missing frontend work:
+- No endpoint exists to remove a member from a workspace once added (only from an organization, via role changes) — this is a backend limitation, not a frontend one.
+- Custom field values and dependency types aren't validated against future-cycle edge cases beyond what the backend already rejects.
 
 ---
 
@@ -379,13 +361,17 @@ GET /health
 
 ---
 
+## License
+
+MIT
+
+---
+
 ## Testing
 
-The backend test suite covers the three most critical flows: authentication, task management, and webhook delivery.
+The test suite covers the three most critical flows: authentication, task management, and webhook delivery.
 
 ```bash
-cd backend
-
 # Create the test database (first time only)
 psql -U postgres -c "CREATE DATABASE collab_tasks_test;"
 
@@ -403,18 +389,3 @@ pytest -v
 | Auth | 12 | Register, login, token refresh, protected routes |
 | Tasks | 14 | CRUD, filters, search, assignment email trigger, soft delete |
 | Webhooks | 9 | CRUD, signature verification, delivery trigger, retry backoff |
-
-The frontend doesn't currently have an automated test suite — see `npm run lint` for static checks in the meantime.
-
----
-
-## Deployment
-
-- **Backend** — a `render.yaml` blueprint is included for one-click deployment to [Render](https://render.com) (web service + managed Redis + managed Postgres). For other hosts, build with the provided `Dockerfile`, run `alembic upgrade head` on startup, and provide the environment variables listed above.
-- **Frontend** — build a static bundle with `npm run build` (outputs to `frontend/dist/`) and deploy it to any static host (Vercel, Netlify, Render static site, etc.). Point that host's rewrite/proxy rules at your deployed backend for `/api` and `/ws`, since the app doesn't currently read an API base URL from environment variables.
-
----
-
-## License
-
-MIT
